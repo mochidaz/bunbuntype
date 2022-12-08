@@ -1,13 +1,29 @@
+use std::borrow::Borrow;
+use std::collections::VecDeque;
 use crate::loaders::loader::load_wordlist;
 use crate::loaders::randomizer::randomizer;
 use rand::seq::SliceRandom;
 use std::path::Path;
 use tui::widgets::TableState;
+use crate::serializers::wpm_results::WpmResult;
 
 pub enum InputMode {
     Normal,
     Editing,
     Typing,
+}
+
+#[derive(PartialEq)]
+pub enum State {
+    TypingTest,
+    MainMenu,
+    Chart,
+}
+
+pub enum TypingTestState {
+    NotStarted,
+    Running,
+    End,
 }
 
 pub struct App<'a> {
@@ -18,13 +34,35 @@ pub struct App<'a> {
     pub text_input_history: Vec<String>,
     pub text_input_history_index: usize,
     pub items: Vec<Vec<&'a str>>,
-    pub words: Vec<String>,
+    pub words: VecDeque<String>,
     pub timer: Option<tokio::time::Instant>,
+    pub current_time: u64,
+    pub state: State,
+    pub correct_words: usize,
+    pub incorrect_words: usize,
+    pub typing_test_state: TypingTestState,
+    pub wpm_results: Vec<(&'a str, u64)>,
 }
 
 impl<'a> App<'a> {
-    pub fn new(wordlist: impl AsRef<Path>) -> Self {
-        let mut load_words = load_wordlist(wordlist);
+    pub fn new<T>(wordlist: T, result_file: T) -> Self
+    where T: AsRef<Path> {
+        let mut load_words = VecDeque::from(load_wordlist(wordlist));
+
+
+        // The data for tui-rs bar chart is required to be a tuple of an &str a u64 which is why leaking is required
+        let res = match WpmResult::from_file(&result_file) {
+            Ok(f) => {
+                f.iter()
+                    .map(|wr| (Box::leak(wr.date_time
+                        .to_string()
+                        .into_boxed_str()) as &str, wr.awpm as u64))
+                    .collect::<Vec<(&str, u64)>>()
+            },
+            Err(_) => {
+                vec![("", 0)]
+            }
+        };
 
         let mut instance = Self {
             input_mode: InputMode::Normal,
@@ -36,6 +74,12 @@ impl<'a> App<'a> {
             items: vec![vec!["Typing Test"], vec!["View Graph"]],
             words: load_words,
             timer: None,
+            current_time: 0,
+            state: State::MainMenu,
+            correct_words: 0,
+            incorrect_words: 0,
+            typing_test_state: TypingTestState::NotStarted,
+            wpm_results: res,
         };
 
         instance.shuffle_words();
@@ -44,7 +88,9 @@ impl<'a> App<'a> {
     }
 
     pub fn shuffle_words(&mut self) {
-        self.words.shuffle(&mut rand::thread_rng());
+        let mut another_vec = Vec::from(self.words.clone());
+        another_vec.shuffle(&mut rand::thread_rng());
+        self.words = VecDeque::from(another_vec);
     }
 
     pub fn start_timer(&mut self, duration: u64) {

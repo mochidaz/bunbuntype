@@ -1,2 +1,2 @@
 mod tests;
-mod wpm_results;
+pub mod wpm_results;

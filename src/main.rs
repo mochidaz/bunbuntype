@@ -1,9 +1,11 @@
+extern crate core;
+
 mod app;
 mod calculators;
 mod error;
-mod loaders;
-mod serializers;
-mod timer;
+pub mod loaders;
+pub mod serializers;
+pub mod timer;
 mod ui;
 
 use crate::app::App;
@@ -25,7 +27,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new("resource/wordlist");
+    let mut app = App::new("resource/wordlist", "resource/score.json");
     let res = run_app(&mut terminal, &mut app);
 
     disable_raw_mode()?;
